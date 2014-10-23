@@ -1,9 +1,3 @@
-KernelSharing
-=============
-
-my os kernel sharing and teaching
-
-
 ###项目简介
 ---
 
