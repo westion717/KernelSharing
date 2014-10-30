@@ -8,7 +8,11 @@
 *  By:Westion westion717@gmail.com
 */
 
+#include <scrn.h>
+
 void main()
 {
+	cls();
+	move_csr();			
     for (;;);
 }

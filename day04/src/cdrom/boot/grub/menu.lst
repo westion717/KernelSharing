@@ -1,0 +1,4 @@
+default 0 
+title mykernel 
+root (cd) 
+kernel /kernel/kernel.bin
