@@ -26,5 +26,4 @@ PUBLIC size_t strlen(const char *str);
 PUBLIC char inportb (u16 _port);
 //IO操作，端口赋值
 PUBLIC void outportb (u16 _port, char _data);
-
 #endif
