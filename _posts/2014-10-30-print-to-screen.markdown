@@ -102,7 +102,7 @@ where是我们的内存地址，character是字符的ascii码，attribute是字�
 
 **注意：这里的`0xB8000`已经转换成了short类型的指针，所以每加1是移动两个内存单元，所以323对应的是646，地址前进了646个字节。这也是指针方便的地方**
 
-好了，接下来，我们专门建立一个`scrn.c`源文件，来处理跟屏幕显 有关的操作。
+好了，接下来，我们专门建立一个`scrn.c`源文件，来处理跟屏幕显示有关的操作。
 
 {% highlight c linenos%}
 
@@ -113,9 +113,13 @@ where是我们的内存地址，character是字符的ascii码，attribute是字�
 #include <system.h>
 
 /*先定义下我们的字符属性,然后是行和列*/
-STATIC unsigned short *textmemptr;
-STATIC int attrib = 0x0F; //黑底白字
-STATIC int column = 0, row = 0; //列和行，主要用来定位屏幕的位置。这样可以移动光标到特定位置。
+PRIVATE unsigned short *textmemptr;
+PRIVATE int attrib = 0x0F; //黑底白字
+PRIVATE int column = 0, row = 0; //列和行，主要用来定位屏幕的位置。这样可以移动光标到特定位置。
+
+PRIVATE void move_csr();
+PRIVATE void scroll();
+
 
 //先看一个简单的清屏函数
 /* Clears the screen */
@@ -123,7 +127,6 @@ PUBLIC void cls()
 {
     short blank;
     int i;
-
     /* ascii为0x20的空格符，因为空格符看不见，所以起了清屏作用*/
     blank = 0x20 | (attrib << 8);
 
@@ -137,8 +140,8 @@ PUBLIC void cls()
     move_csr();//移动光标
 }
 
-/* 更新光标位置，就是一闪一闪的短的白色下滑线*/
-PUBLIC void move_csr(void)
+/* 具体操作端口更新光标位置，就是一闪一闪的短的白色下滑线*/
+PRIVATE void move_csr(void)
 {
     unsigned short temp;
 
@@ -152,9 +155,157 @@ PUBLIC void move_csr(void)
     outportb(0x3D5, temp);
 }
 
+
+/*用于滚屏的函数*/
+
+PRIVATE void scroll()
+{
+    unsigned blank, temp;
+
+    blank = 0x20 | (attrib << 8);
+    if(row >= 25)
+    {
+        temp = row - 25 + 1;
+        memcpy (textmemptr, textmemptr + temp * 80, (25 - temp) * 80 * 2);
+        memsetw (textmemptr + (25 - temp) * 80, blank, 80);
+        row = 25 - 1;
+    }
+}
+
+/* 输出单个字符*/
+PUBLIC void putch(unsigned char c)
+{
+    unsigned short *where;
+    unsigned att = attrib << 8;
+
+    /* 处理退格键*/
+    if(c == 0x08)
+    {
+        if(column != 0) column--;
+    }
+    /* 处理tab键*/
+    else if(c == 0x09)
+    {
+        column = (column + 8) & ~(8 - 1);
+    }
+    /* 处理回显示键*/
+    else if(c == '\r')
+    {
+        column = 0;
+    }
+    /* 这里处理换行符，这里得到换行符的处理时既换行，光标也移动到开头*/
+    else if(c == '\n')
+    {
+        column = 0;
+        row++;
+    }
+    /* 大于等于空格符的ascii码都要被显示。显示的索引用上面介绍的方法找到内存对应的位置 */
+    else if(c >= ' ')
+    {
+        where = textmemptr + (row * 80 + column);
+        *where = c | att;	
+        column++;
+    }
+
+    /* 如果游标超出了一行，就移动到下一行，并且移到最头上*/
+    if(column >= 80)
+    {
+        column = 0;
+        row++;
+    }
+
+    /*滚屏，如果需要的话，滚屏函数里会判断是否需要*/
+    scroll();
+    /*执行移动游标*/
+    move_csr();
+}
+
+/* 初始化屏幕。即在main函数中调用 */
+PUBLIC void init_video()
+{
+    textmemptr = (unsigned short *)0xB8000;
+    cls();
+}
+
+
+/* 输出字符串 */
+PUBLIC void puts(const char *text)
+{
+    int i;
+
+    for (i = 0; i < strlen(text); i++)
+    {
+        putch(text[i]);
+    }
+}
+
+/*最后，我们再添加一个可以修改颜色的函数*/
+PUBLIC void settextcolor(unsigned char forecolor, unsigned char backcolor)
+{
+    attrib = (backcolor << 4) | (forecolor & 0x0F);
+}
+
 {% endhighlight %}
+
 
 ##具体操作
 
+好，分析完了之后我们来具体操作。
+
+
+除了上面在`source`目录建立了`scrn.c`文件以外，我们别忘记建立`scrn.h`文件，把函数的生命和变量的声明都放在里面。
+
+{% highlight c linenos%}
+/*scrn.h*/
+include <type.h>
+#ifndef __SCRN_H
+#define __SCRN_H
+
+PUBLIC void cls();
+PUBLIC void putch(unsigned char c);
+PUBLIC void init_video();
+PUBLIC void puts(const char * text);
+PUBLIC void settextcolor(unsigned char forecolor,unsigned char backcolor);
+#endif
+
+{% endhighlight %}
+
+然后我们要在makefile添加关于`scrn.c`的编译
+
+添加如下两行
+{% highlight make linenos%}
+scrn.o:
+        $(compiler) $(options) scrn.o $(source)/scrn.c
+{% endhighlight %}
+
+并在objects变量里加上`scrn.o`
+
+	objects=start.o system.o  scrn.o main.o
+	
+最后为了显示出效果，我们在main函数先调用`init_video`函数初始化屏幕，也就是清屏。然后用`puts`函数输出两行helloword。并用for循环停着
+
+{% highlight c linenos%}
+
+#include <scrn.h>
+
+void main()
+{
+        init_video();//初始化
+        //按国际惯例输出helloword
+        puts("hello world!\n");
+        puts("hello world!\n");
+    for (;;);
+}
+{% endhighlight %}
+
+最后执行build.sh建立出iso镜像，从虚拟机中取出。用virtualbox运行，这里就不再多说了。怎么样是不是看见如下的情景
+
+![hello](http://mykernel.qiniudn.com/day04_helloworld.png)
+
+怎么样。是不是特别有成就感?!
+
 ##注意提醒
 ---
+- 在按位操作的过程中，变量的有无符号类型，其实并不太重要。主要关心变量类型所占的空间，也就是位数。
+- 有关键字`PRIVATE`修饰的变量和函数是**静态**的，不能被对应的**.c文件之外**的文件里调用。所以**声明和定义不要放在头文件里**，放在**.c**文件里。虽然不能被其他文件调用，但因为这些变量和函数会被**自己所在的.c文件使用**，所以把这些变量和函数的`声明`放在.c文件**最前面**,遵循C语言的先声明后调用原则，而`定义`则可以在.c文件的任意位置。当然声明变量的时候也可以直接赋值。***没有赋值，默认为0***
+- 如果你想消除编译时候main函数因返回值不会int消除的警告，那么你就将返回值改成int，并`return 0;`
