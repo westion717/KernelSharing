@@ -6,15 +6,15 @@ compiler=gcc
 ld=ld
 cd=cdrom
 
-objects=start.o system.o main.o scrn.o
+objects=start.o system.o  scrn.o main.o
 
 kernel: ${objects}
 	${ld} -T link.ld -o kernel.bin ${objects}
 	mv ${objects} ${build}
 	mv kernel.bin ${cd}/kernel/
-scrn.o:
+scrn.o: 
 	$(compiler) $(options) scrn.o $(source)/scrn.c
-main.o:
+main.o:  
 	$(compiler) $(options) main.o $(source)/main.c
 system.o:
 	${compiler} $(options) system.o ${source}/system.c

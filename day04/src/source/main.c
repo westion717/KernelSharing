@@ -10,9 +10,11 @@
 
 #include <scrn.h>
 
-void main()
+int main()
 {
-	cls();
-	move_csr();			
+	init_video();
+	puts("hello world\n");
+	puts("hello world\n");
     for (;;);
+return 0;
 }
