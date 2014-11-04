@@ -240,24 +240,23 @@ SECTION .bss
 在链接的过程中还需要指定这个生成的二进制可执行文件的格式，还有内核被加载到内存中的位置等等信息。所以我们用一个链接脚本来完成这个工作
 
 
-	OUTPUT_FORMAT("binary")
 	ENTRY(start)
-	phys = 0x00100000;
+	address = 0x00100000;
 	SECTIONS
 	{
-	  .text phys : AT(phys) {
+	  .text address : AT(address) {
 	    code = .;
 	    *(.text)
 	    *(.rodata)
 	    . = ALIGN(4096);
 	  }
-	  .data : AT(phys + (data - code))
+	  .data : AT(address + (data - code))
 	  {
 	    data = .;
 	    *(.data)
 	    . = ALIGN(4096);
 	  }
-	  .bss : AT(phys + (bss - code))
+	  .bss : AT(address + (bss - code))
 	  {
 	    bss = .;
 	    *(.bss)
@@ -268,7 +267,7 @@ SECTION .bss
 	
 
 对于链接脚本，本教程就不细讲，详细的解读需要读者自行查询资料。简单点两个地方。其他不懂的地方并不影响后续的学习。  
-`phys = 0x00100000` 指定了内核加载到内存中的位置，位于1MB处。
+`address = 0x00100000` 指定了内核加载到内存中的位置，位于1MB处。
 `ENTRY(start)` 指明了入口地址的标记，start也可以改成别的，相应的`start.asm`中也需要修改与之匹配。
 
 另外，用nasm编译start.asm并且链接生成kernel的过程需要使用好多条指令，并且有一定的顺序。之后的C代码也需要编译链接，整个过程比较繁琐。为了简便，我们需要一个帮我们编译和链接的脚本。最完善的办法是使用Makefile。考虑到Makefile编写和学习有一定难度，所以我们暂时只用bash脚本来处理。我们建立一个build.sh文件，将需要执行的操作写入，便可以一口气执行。
