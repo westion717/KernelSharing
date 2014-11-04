@@ -1,21 +1,20 @@
-OUTPUT_FORMAT("binary")
 ENTRY(start)
-phys = 0x00100000;
+address = 0x00100000;
 SECTIONS
 {
-  .text phys : AT(phys) {
+  .text address : AT(address) {
     code = .;
     *(.text)
     *(.rodata)
     . = ALIGN(4096);
   }
-  .data : AT(phys + (data - code))
+  .data : AT(address + (data - code))
   {
     data = .;
     *(.data)
     . = ALIGN(4096);
   }
-  .bss : AT(phys + (bss - code))
+  .bss : AT(address + (bss - code))
   {
     bss = .;
     *(.bss)
