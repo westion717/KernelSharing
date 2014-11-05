@@ -13,10 +13,10 @@
 
 int main()
 {
+	gdt_install();
 	init_video();
 	puts("hello world\n");
 	puts("hello world\n");
-	gdt_install();
 	settextcolor(12,13);
 	puts("hello world\n");
     for (;;);
