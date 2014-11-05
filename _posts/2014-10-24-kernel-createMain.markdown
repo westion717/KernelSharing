@@ -30,19 +30,19 @@ categories: day03
 PUBLIC void *memcpy(void *dest, const void *src, size_t count)
 
 //内存赋值,从指定开始每个内存单元都赋值为val
-PUBLIC void *memset(void *dest, char val, size_t count)
+PUBLIC void *memset(void *dest, u8 val, size_t count)
 
 //内存赋值（字）从指定开始每个内存字单元都赋值为val
-PUBLIC short *memsetw(void *dest, short val, size_t count)
+PUBLIC void *memsetw(void *dest, u16 val, size_t count)
 
 //计算字符串长度
 PUBLIC size_t strlen(const char *str)
 
 //IO操作，端口读值
-PUBLIC char inportb (u16 _port)
+PUBLIC u8 inportb (u16 _port)
 
 //IO操作，端口赋值
-PUBLIC void outportb (u16 _port, char _data)
+PUBLIC void outportb (u16 _port, u8 _data)
 {% endhighlight %}
 
 具体实现参看github的源代码[system.c](https://github.com/westion717/KernelSharing/tree/master/day03/src/source/system.c)
@@ -136,6 +136,6 @@ Ok按照前一天课程，运行`build.sh`
 ##注意提醒
 ---
 
-- `type.h`里将`unsigned char`,`unsigned short`和`unsigned int`定义为对应的**u+**位数大小，是为了更直观地体现类型占的空间并且存的数都是无符号数，一般是用在表示存的数是地址，端口，所以都是正数。
+- `type.h`里将`unsigned char`,`unsigned short`和`unsigned int`定义为对应的**u+**位数大小，是为了更直观地体现类型占的空间。在底层的操作中我们一般主要关心每一位的值，在赋值的时候一般将位转换16进制数然后赋值，所以用无符号更易于理解。比如要对一个字节的存储结构的最高位赋值为1。就可以这样 `u8 temp = 0x80`,0x80作为无符号数就是`10000000`。如果对于不关心位数的变量，那么也不需要特别申明为`u+位数`,就像在普通C语言编程中一样使用int等类型就行。比如你不关心num这个变量的每一位是多少，只是用来存储一个数字。那么只要定义num为数字的类型就行，int或short。**即每次以多个字节为一个整体来看待变量的值的时候。**
 - `PUBLIC`与`PRIVATE`对应的宏的作用是是否在函数前`static`关键字。作用就是来区别能否被其他.c文件调用。这是C语言static关键字的知识，这里不做详述
 - `outportb`和`inportb`函数的具体实现中用到了上节课没讲的第二种使用汇编的方法。就是在C语言中直接嵌入汇编。你也可以用第一种方式在汇编里写好方法，然后在C语言中调用。因为第二种方式用的不多，这里不做解释。

@@ -113,7 +113,7 @@ where是我们的内存地址，character是字符的ascii码，attribute是字�
 #include <system.h>
 
 /*先定义下我们的字符属性,然后是行和列*/
-PRIVATE unsigned short *textmemptr;
+PRIVATE u16 *textmemptr;
 PRIVATE int attrib = 0x0F; //黑底白字
 PRIVATE int column = 0, row = 0; //列和行，主要用来定位屏幕的位置。这样可以移动光标到特定位置。
 
@@ -125,7 +125,7 @@ PRIVATE void scroll();
 /* Clears the screen */
 PUBLIC void cls()
 {
-    short blank;
+    u16 blank;
     int i;
     /* ascii为0x20的空格符，因为空格符看不见，所以起了清屏作用*/
     blank = 0x20 | (attrib << 8);
@@ -143,7 +143,7 @@ PUBLIC void cls()
 /* 具体操作端口更新光标位置，就是一闪一闪的短的白色下滑线*/
 PRIVATE void move_csr(void)
 {
-    unsigned short temp;
+   int temp;
 
     /*用公式算出索引*/
     temp = row * 80 + column;
@@ -160,7 +160,8 @@ PRIVATE void move_csr(void)
 
 PRIVATE void scroll()
 {
-    unsigned blank, temp;
+    u16 blank;
+    int temp;
 
     blank = 0x20 | (attrib << 8);
     if(row >= 25)
@@ -175,8 +176,8 @@ PRIVATE void scroll()
 /* 输出单个字符*/
 PUBLIC void putch(unsigned char c)
 {
-    unsigned short *where;
-    unsigned att = attrib << 8;
+    u16 *where;
+    u16 att = attrib << 8;
 
     /* 处理退格键*/
     if(c == 0x08)
@@ -223,7 +224,7 @@ PUBLIC void putch(unsigned char c)
 /* 初始化屏幕。即在main函数中调用 */
 PUBLIC void init_video()
 {
-    textmemptr = (unsigned short *)0xB8000;
+    textmemptr = (u16 *)0xB8000;
     cls();
 }
 
@@ -240,7 +241,7 @@ PUBLIC void puts(const char *text)
 }
 
 /*最后，我们再添加一个可以修改颜色的函数*/
-PUBLIC void settextcolor(unsigned char forecolor, unsigned char backcolor)
+PUBLIC void settextcolor(u8 forecolor, u16 backcolor)
 {
     attrib = (backcolor << 4) | (forecolor & 0x0F);
 }
@@ -265,7 +266,7 @@ PUBLIC void cls();
 PUBLIC void putch(unsigned char c);
 PUBLIC void init_video();
 PUBLIC void puts(const char * text);
-PUBLIC void settextcolor(unsigned char forecolor,unsigned char backcolor);
+PUBLIC void settextcolor(u8 forecolor,u8 backcolor);
 #endif
 
 {% endhighlight %}
@@ -308,4 +309,4 @@ void main()
 ---
 - 在按位操作的过程中，变量的有无符号类型，其实并不太重要。主要关心变量类型所占的空间，也就是位数。
 - 有关键字`PRIVATE`修饰的变量和函数是**静态**的，不能被对应的**.c文件之外**的文件里调用。所以**声明和定义不要放在头文件里**，放在**.c**文件里。虽然不能被其他文件调用，但因为这些变量和函数会被**自己所在的.c文件使用**，所以把这些变量和函数的`声明`放在.c文件**最前面**,遵循C语言的先声明后调用原则，而`定义`则可以在.c文件的任意位置。当然声明变量的时候也可以直接赋值。***没有赋值，默认为0***
-- 如果你想消除编译时候main函数因返回值不会int消除的警告，那么你就将返回值改成int，并`return 0;`
+- 如果你想消除编译时候main函数因返回值不会int消除的警告，那么你就将返回值改成int，并`return 0;`Init
