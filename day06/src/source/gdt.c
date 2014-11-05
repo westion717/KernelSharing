@@ -4,7 +4,7 @@
  *  __attribute__((packed)) 结构是防止编译器优化
  * 成员从上到下地址以此递增，从低位到高位
  */
-struct gdt_entry
+PRIVATE struct gdt_entry
 {
 	u16 limit_low;
 	u16 base_low;
@@ -15,7 +15,7 @@ struct gdt_entry
 }__attribute__((packed));
 
 /* GDTR的机构 limit记得是长度－1*/
-struct gdt_ptr
+PRIVATE struct gdt_ptr
 {
 	u16 limit;
 	u32 base;
