@@ -17,5 +17,5 @@ PUBLIC void cls();
 PUBLIC void putch(unsigned char c);
 PUBLIC void init_video();
 PUBLIC void puts(const char * text);
-PUBLIC void settextcolor(unsigned char forecolor,unsigned char backcolor);
+PUBLIC void settextcolor(u8 forecolor,u8 backcolor);
 #endif

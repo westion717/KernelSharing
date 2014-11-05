@@ -2,7 +2,7 @@
 #include <system.h>
 #include <scrn.h>
 
-PRIVATE unsigned short *textmemptr;
+PRIVATE u16 *textmemptr;
 PRIVATE int attrib = 0x0F; //黑底白字
 PRIVATE int column = 0, row = 0; //列和行，主要用来定位屏幕的位置。这样可以移动光标到特定位置。
 PRIVATE void move_csr();
@@ -11,15 +11,15 @@ PRIVATE void scroll();
 /* 初始化屏幕。即在main函数中调用  */
 PUBLIC void init_video()
 {
-    textmemptr = (unsigned short *)0xB8000;
-    cls();
+	textmemptr = (u16 *)0xB8000;
+	cls();
 }
 
 //先看一个简单的清屏函数
 /* Clears the screen */
 PUBLIC void cls()
 {
-	short blank;
+	u16 blank;
 	int i;
 	/* ascii为0x20的空格符，因为空格符看不见，所以起了清屏作用*/
 	blank = 0x20 | (attrib << 8);
@@ -37,7 +37,7 @@ PUBLIC void cls()
 /* 更新光标位置，就是一闪一闪的短的白色下滑线*/
 PRIVATE void move_csr()
 {
-	unsigned short temp;
+	int temp;
 
 	/*用公式算出索引*/
 	temp = row * 80 + column;
@@ -54,7 +54,8 @@ PRIVATE void move_csr()
 
 PRIVATE void scroll()
 {
-	unsigned short blank, temp;
+	u16 blank; 
+	int temp;
 
 	blank = 0x20 | (attrib << 8);
 	if(row >= 25)
@@ -69,8 +70,8 @@ PRIVATE void scroll()
 /* 输出单个字符*/
 PUBLIC void putch(unsigned char c)
 {
-	unsigned short *where;
-	unsigned short att = attrib << 8;
+	u16 *where;
+	u16 att = attrib << 8;
 
 	/* 处理退格键*/
 	if(c == 0x08)
@@ -117,17 +118,17 @@ PUBLIC void putch(unsigned char c)
 /* 输出字符串 */
 PUBLIC void puts(const char *text)
 {
-    int i;
+	int i;
 
-    for (i = 0; i < strlen(text); i++)
-    {
-        putch(text[i]);
-    }
+	for (i = 0; i < strlen(text); i++)
+	{
+		putch(text[i]);
+	}
 }
 
 /*修改字符颜色*/
-PUBLIC void settextcolor(unsigned char forecolor, unsigned char backcolor)
+PUBLIC void settextcolor(u8 forecolor, u8 backcolor)
 {
-    attrib = (backcolor << 4) | (forecolor & 0x0F);
+	attrib = (backcolor << 4) | (forecolor & 0x0F);
 }
 
