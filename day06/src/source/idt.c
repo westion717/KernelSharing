@@ -25,10 +25,9 @@ struct idt_ptr idtp;
 
 /*这个函数在start.asm中，载入idt*/
 extern void idt_load();
-PRIVATE void idt_set_gate(int num, u32 base, u16 sel, u8 flags);
 
 /* 设置条目函数*/
-PRIVATE void idt_set_gate(int num, u32 base, u16 sel, u8 flags)
+PUBLIC void idt_set_gate(int num, u32 base, u16 sel, u8 flags)
 {
 	idt[num].base_lo = (base & 0xFFFF);
 	idt[num].base_hi = (base >> 16) & 0xFFFF;
@@ -42,10 +41,10 @@ PUBLIC void idt_install()
 {
 	/* 设置IDTR结构，把大小和IDT的地址设，像GDT中设置GDTR结构一样 */
 	idtp.limit = (sizeof (struct idt_entry) * 256) - 1;
-	idtp.base = (u32)&idt;
+	idtp.base = (u32)idt;
 
 	/* 先全部初始化为0*/
-	memset(&idt, 0, sizeof(struct idt_entry) * 256);
+	memset(idt, 0, sizeof(struct idt_entry) * 256);
 
 	/* 之后可以在这里设置对应的条目 */
 

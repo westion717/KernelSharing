@@ -61,7 +61,7 @@ PUBLIC void gdt_install()
 {
 	/* 设置GDTR结构 */
 	gp.limit = (sizeof(struct gdt_entry) * 3) - 1;
-	gp.base = (u32)&gdt;
+	gp.base = (u32)gdt;
 
 	/* 0号描述符要为null*/
 	gdt_set_gate(0, 0, 0, 0, 0);

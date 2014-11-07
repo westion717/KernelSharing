@@ -12,4 +12,5 @@
 #define __IDT_H
 
 PUBLIC void idt_install();
+PUBLIC void idt_set_gate(int num, u32 base, u16 sel, u8 flags);
 #endif
