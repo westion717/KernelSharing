@@ -1,0 +1,207 @@
+---
+layout: post
+title:  内部异常处理程序
+categories: day07
+---
+##内容概述
+---
+- ISR
+- 内部异常中断
+- 安装内部异常中断子程序
+
+##知识点分析
+---
+
+####ISR
+ISR，Interrupt Service Routine，也就是中断服务子程序。上个单元中。我们初始化了IDT，设置了256个中断描述符的空间，但都只是全部置0初始化。这个单元，我们要将前32个中断的服务子程序写好，然后安装上去。在本课程中，ISR仅仅指代前32个中断。
+
+####内部异常中断
+前32个有什么特别的地方吗？。因为前32个是系统占用的的中断，这些中断号已经被固定了。比如除数为0就是0号中断。当然了，这里说的中断是广义的中断，这32个也可以被叫做异常，`exception`。我们自己定义的中断，比如软件产生的中断，还有系统外部的设备产生的中断，就要安排在这32个中断之后。这32个中断，大部分是属于内部发生的一些错误。这些错误中，有些错误在发生的时候，调用中断子程序之前会把一个错误码push到内核的堆栈中。而有些则没有这一动作。各个错误和有无错误码如下图。
+
+![errorcode](http://mykernel.qiniudn.com/day07_errorcode.png)
+
+
+所以为了统一，那些没有错误码的异常，我们也人为的push占一个字节的错误码（数字）,并且为了知道是几号中断，我们再push占一个字节的中断号（数字）。  
+
+####安装内部异常中断子程序
+
+先直接看代码，以下代码可以加在`start.asm`中idt初始化部分之后
+{% highlight as linenos%}
+
+
+; 每一个标号为`isr＋数字`的标号都代表对应中断号的服务子程序的入口地址
+global isr0
+global isr1
+global isr2
+...                ; 中间剩余部分读者自行补全
+global isr30
+global isr31
+
+;  0: Divide By Zero Exception
+isr0:
+    cli            ; 关中断，尽管CPU跳转到中断程序之后会自动关闭
+    push byte 0    ; 人为push一个错误码，
+                   ; 以便于栈内数据分布统一
+    push byte 0    ; push一个中断号便于知道是几号中断
+    jmp isr_common_stub
+
+;  1: Debug Exception
+isr1:
+    cli
+    push byte 0
+    push byte 1
+    jmp isr_common_stub
+    
+...                ; 同上格式自行补全2-7号中断的代码
+
+;  8: Double Fault Exception (With Error Code!)
+isr8:
+    cli
+    push byte 8       ; 这个8号中断不需要人为push一个错误码
+    					; 因为本身就有我们只需要push一个中断号
+    jmp isr_common_stub
+
+...                ; 接下来读者按照上面的代码自行补全9-31的中断处理。注意哪些是需要额外push错误码的
+
+; 下面的代码要保存中断时刻的上下文（各个寄存器的值），然后把各个段寄存器切换到ring0，内核级别的数据段来
+; 然后调用C中的一个函数来处理异常
+; 最后复原保存时候的上下文
+isr_common_stub:
+    pusha
+    push word ds
+    push word es
+    push word fs
+    push word gs
+    mov ax, 0x10   ; 中断之后程序从用户态已经转到内核的代码
+    mov ds, ax	     ; 当然数据段也要用内核的数据段
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+    mov eax, esp   
+    push eax		  ; 作为C中处理异常函数的参数，这样那个函数可以通过esp的值作为指针找到前面保存的寄存器的值还有错误码等
+    extern fault_handler
+    mov eax, fault_handler
+    call eax       ;
+    pop eax
+    pop gs
+    pop fs
+    pop es
+    pop ds
+    popa
+    add esp, 2     ; 删除错误码和中断号，每个1字节
+    iret           ; 中断返回。将出栈5个值CS, EIP, EFLAGS, SS, and ESP!
+
+{% endhighlight %}
+
+因为异常发生的时候程序大部分情况是执行在用户态的，也就是不是内核的程序，ring不等于0。而中断处理程序在ring0，所以就会发生段的切换，并且切换到内核之后，中断服务程序里会用到寄存器。所以之前所有的段寄存器和通用寄存器都要保存。所以需要汇编来操作，所以中断程序的入口函数在`start.asm`中。做完保存寄存器的工作之后，再调用C语言来做主要的处理工作，因为C语言方便很多。处理完后再回复之前的用户态的各个寄存器，然后就返回到之前的运行时发生中断的程序。
+
+我们看一下isr.c，用来设置IDT前32个中断描述符。还有前面`start.asm`调用的`fault_handler`函数
+
+{% highlight c linenos%}
+#include <system.h>
+#include <idt.h> //因为要使用idt中的设置描述符函数
+/*导入start.asm中前32个中断处理函数*/
+extern void isr0();
+extern void isr1();
+extern void isr2();
+
+...                             /* 自行补全*/
+
+extern void isr29();
+extern void isr30();
+extern void isr31();
+
+/* 接下来用上次课的设置IDT中描述符的方法，将32个isr中断子程序入口对应每个条目设置到IDT中。即偏移地址处设置为对应的函数名。
+*  0x08是我们内核代码段的段选择子*  
+*  flags是0x8E，代表这个中断门是存在于内存中的*  set to the。特权级是0，代表是内核态的。type是E，代表386中断门
+*/
+PUBLIC void isrs_install()
+{
+    idt_set_gate(0, (u32)isr0, 0x08, 0x8E);
+    idt_set_gate(1, (u32)isr1, 0x08, 0x8E);
+    idt_set_gate(2, (u32)isr2, 0x08, 0x8E);
+    idt_set_gate(3, (u32)isr3, 0x08, 0x8E);
+
+    ...                         /* 自行补全剩下的*/
+
+    idt_set_gate(30, (u32)isr30, 0x08, 0x8E);
+    idt_set_gate(31, (u32)isr31, 0x08, 0x8E);
+}
+
+/* 这是一个字符串数组，用来保存出错信息。我们现在不处理错误而只在屏幕上显示一行字 */
+PRIVATE char *exception_messages[] =
+{
+    "Division By Zero",
+    "Debug",
+    "Non Maskable Interrupt",
+    
+    ...                         /* 补全剩下的*/
+    
+    "Reserved",
+    "Reserved"
+};
+
+/* 目前我们前面32个异常的处理全部用这个函数，而且只输出对应的字符串。然后死循环在那 */
+void fault_handler(struct regs *r)
+{
+    /* 判断这个异常是不是0-31的*/
+    if (r->int_no < 32)
+    {
+        /* 打出错误信息，然后停止在那*/
+        puts(exception_messages[r->int_no]);
+        puts(" Exception. System Halted!\n");
+        for (;;);
+    }
+}
+{% endhighlight %}
+
+还有关于regs这个结构。这个结构如下
+
+{% highlight c linenos%}
+/* 这个结构体现了中断子程序跳入C代码之后栈的结构 */
+struct regs
+{
+    u16 gs, fs, es, ds;      /* 最后push的几个段寄存器*/
+    u32 edi, esi, ebp, esp, ebx, edx, ecx, eax;  /* pusha 命令push的通用寄存器*/
+    u8 int_no, err_code;    /* 我们push的中断号和错误代码 */
+    /*以下5个值是CPU硬件自动push进来的，当发生中断的时候
+      保留了中断之前的程序的地址还有状态寄存器，还有中断之前的主程序的栈段选择子，还有esp指针。因为主程序可能不是ring0，所以有自己的栈
+    */
+    u32 eip;
+    u16 cs;
+    u32 eflags, useresp;
+    u16 userss; 
+};
+{% endhighlight %}
+
+![stack_pointer](http://mykernel.qiniudn.com/day07_stack_pointer.png)
+
+esp的值作为函数参数传给C代码中的函数的参数r
+struct regs* r 这个指针就刚好指向之前esp指向的gs处（现在因为栈作为r这个参数传递用途，所以栈顶部是esp之前的值`esp`，之前esp指向gs）
+
+**这个结构的使用是一个很巧妙的做法**  
+
+struct regs中刚好从上到小的成员，地址也是逐渐增大，和栈中成员位置相符。
+
+因为这个寄存器组的结构以后在很多地方会用到，所以我们就把它定义在`system.h`中
+
+##具体操作
+具体代码参看[github]()
+
+建立一个`isr.c`和`isr.h`，还有在`start.asm`中添加相关部分。最后在`main`函数中调用`isr_install`函数安装好isr。并且要在main函数中打开中断。因为GRUB加载内核的时候是关闭中断的。这是我们第一次打开它。用汇编指令`sti`  
+
+
+	__asm__ __volatile__ ("sti");
+
+
+别忘了makefile添加相关目标文件
+
+最后为了看出效果，我们在main函数中添加除以0，来触发CPU内部的0号中断。
+
+![dividezero](http://mykernel.qiniudn.com/day07_divide_zero.png)
+
+
+##注意提醒
+---
+- 到这里我们可以证明我们上次课的IDT是设置正确的。
+- 前面最早的几节课中就说过，代码或数据有特权级，在段描述符中设置，有0-3。0是内核态的段，3是用户应用段。所以中断的发生会涉及到段的转移，特权级的变换。比如程序的执行从特权
