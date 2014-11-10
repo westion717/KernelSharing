@@ -456,10 +456,10 @@ isr47:
 extern isr_handler
 isr_common_stub:
     pusha
-    push word ds
-    push word es
-    push word fs
-    push word gs
+    push  ds
+    push  es
+    push  fs
+    push  gs
     mov ax, 0x10   ; 中断之后程序从用户态已经转到内核的代码
     mov ds, ax	     ; 当然数据段也要用内核的数据段
     mov es, ax
@@ -475,7 +475,7 @@ isr_common_stub:
     pop es
     pop ds
     popa
-    add esp, 2     ; 删除错误码和中断号，每个1字节
+    add esp, 8     ; 删除错误码和中断号，每个4字节
     iret           ; 中断返回。将出栈5个值CS, EIP, EFLAGS, SS, and ESP!
 
 

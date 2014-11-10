@@ -22,7 +22,7 @@ int main()
 	irq_install();
 	init_video();
 	puts("helloworld");
-	//__asm__ __volatile__ ("sti");
+	__asm__ __volatile__ ("sti");
 	for (;;);
 	return 0;
 }

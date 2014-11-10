@@ -27,6 +27,6 @@ system.o:
 start.o:
 	nasm -f elf -o start.o start.asm
 clean: 
-	rm ./*.o $(build)/*.o kernel.iso
+	-rm ./*.o $(build)/*.o kernel.iso
 iso:
 	mkisofs -R -b boot/grub/stage2_eltorito -no-emul-boot -boot-load-size 4 -boot-info-table -o kernel.iso $(cd)
