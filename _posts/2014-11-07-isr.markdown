@@ -13,7 +13,7 @@ categories: day07
 ---
 
 ####ISR
-ISR，Interrupt Service Routine，也就是中断服务子程序。上个单元中。我们初始化了IDT，设置了256个中断描述符的空间，但都只是全部置0初始化。这个单元，我们要将前32个中断的服务子程序写好，然后安装上去。在本课程中，ISR仅仅指代前32个中断。
+ISR，Interrupt Service Routine，也就是中断服务子程序。上个单元中。我们初始化了IDT，设置了256个中断描述符的空间，但都只是全部置0初始化。这个单元，我们要将前32个中断的服务子程序写好，然后安装上去。
 
 ####内部异常中断
 前32个有什么特别的地方吗？。因为前32个是系统占用的的中断，这些中断号已经被固定了。比如除数为0就是0号中断。当然了，这里说的中断是广义的中断，这32个也可以被叫做异常，`exception`。我们自己定义的中断，比如软件产生的中断，还有系统外部的设备产生的中断，就要安排在这32个中断之后。这32个中断，大部分是属于内部发生的一些错误。这些错误中，有些错误在发生的时候，调用中断子程序之前会把一个错误码push到内核的堆栈中。而有些则没有这一动作。各个错误和有无错误码如下图。
@@ -68,10 +68,10 @@ isr8:
 ; 最后复原保存时候的上下文
 isr_common_stub:
     pusha
-    push word ds
-    push word es
-    push word fs
-    push word gs
+    push  ds
+    push  es
+    push  fs
+    push  gs
     mov ax, 0x10   ; 中断之后程序从用户态已经转到内核的代码
     mov ds, ax	     ; 当然数据段也要用内核的数据段
     mov es, ax
@@ -88,7 +88,7 @@ isr_common_stub:
     pop es
     pop ds
     popa
-    add esp, 2     ; 删除错误码和中断号，每个1字节
+    add esp, 8     ; 删除错误码和中断号，每个4字节
     iret           ; 中断返回。将出栈5个值CS, EIP, EFLAGS, SS, and ESP!
 
 {% endhighlight %}
@@ -159,19 +159,14 @@ void fault_handler(struct regs *r)
 
 {% highlight c linenos%}
 /* 这个结构体现了中断子程序跳入C代码之后栈的结构 */
-struct regs
+   struct regs
 {
-    u16 gs, fs, es, ds;      /* 最后push的几个段寄存器*/
-    u32 edi, esi, ebp, esp, ebx, edx, ecx, eax;  /* pusha 命令push的通用寄存器*/
-    u8 int_no, err_code;    /* 我们push的中断号和错误代码 */
-    /*以下5个值是CPU硬件自动push进来的，当发生中断的时候
-      保留了中断之前的程序的地址还有状态寄存器，还有中断之前的主程序的栈段选择子，还有esp指针。因为主程序可能不是ring0，所以有自己的栈
-    */
-    u32 eip;
-    u16 cs;
-    u32 eflags, useresp;
-    u16 userss; 
+    u32 gs, fs, es, ds; 
+    u32 edi, esi, ebp, esp, ebx, edx, ecx, eax; /*pusha 指令push的 */
+    u32 int_no, err_code;   
+    u32 eip, cs, eflags, useresp, ss;   /* CPU自动push的*/
 };
+
 {% endhighlight %}
 
 ![stack_pointer](http://mykernel.qiniudn.com/day07_stack_pointer.png)
@@ -186,7 +181,7 @@ struct regs中刚好从上到小的成员，地址也是逐渐增大，和栈中
 因为这个寄存器组的结构以后在很多地方会用到，所以我们就把它定义在`system.h`中
 
 ##具体操作
-具体代码参看[github]()
+具体代码参看[github](https://github.com/westion717/KernelSharing/tree/master/day07/src)
 
 建立一个`isr.c`和`isr.h`，还有在`start.asm`中添加相关部分。最后在`main`函数中调用`isr_install`函数安装好isr。并且要在main函数中打开中断。因为GRUB加载内核的时候是关闭中断的。这是我们第一次打开它。用汇编指令`sti`  
 
