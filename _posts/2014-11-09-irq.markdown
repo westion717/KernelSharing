@@ -1,0 +1,233 @@
+---
+layout: post
+title:  外部中断
+categories: day08
+---
+##内容概述
+---
+- 8259A
+- 8259A初始化
+- 外部中断子程序安装
+
+##知识点分析
+---
+
+
+上一部分，我们已经安装了前32个中断。具体一点来说，前32个的中断是异常，广义上的中断。接下来我们要做的是配置外部的中断。所谓外部的中断就是如键盘、鼠标、打印机机、声卡等外部硬件产生的中断。那么这些个中断是如何产生并通知CPU呢？并且这些个中断也有轻重缓急，优先级的区分。
+
+####8259A
+下面我们要说一下计算机主板上的一个芯片叫8259A，它就是用来处理键盘、鼠标打印机等发出的中断请求，并且能够进行优先级的划分等关于中断的一些逻辑控制。  
+
+8259A芯片一片芯片有8个中断请求的引脚，分别是IR0-IR7可以接8个中断源。而在PC机中，处理外部中断的8259A芯片有两个，联合起来组成主从关系。从片接在主片的IR2引脚上。所以这两片芯片一共可以处理15个中断源。如下图所示，主片从IR0-IR7，从片从IR8-IR15。  
+
+![8259A](http://mykernel.qiniudn.com/day08_8259A.png)
+
+
+这两片8259A的15个引脚接到对应的请求中断的硬件上，比如鼠标、键盘。当这些硬件发送中断请求，8259A就会判断响应的优先情况，选择优先级最高的请求，并发送给CPU，还要告诉CPU中断请求的中断号。并在中断完成的时候CPU还要告诉8259A中断已处理完成。8259A个引脚请求中断的优先级从IR0－IR7依次减小。同一片中IR0优先级最高，IR7最小。**另外，一般情况，在处理优先级高的中断服务程序的时候，优先级低的中断就无法请求。而比当前优先级高的请求是可以被响应的。**
+  
+关于中断号，默认情况下主片是8-15，也就是IDT中8-15号描述符。而从片是0x70-0x78。而我们前面就已经知道系统的前32个中断已被系统保留，所以外部中断不能占用这32个。好在这个8259A是可以编程改变中断号的。  
+
+所有对8259A的控制，都是通过向它的端口写入数据来达到的。通过对端口写入数据来编程8259A，使得它的中断号IR0-IR15映射到32-47。
+
+####8259A初始化
+关于8259A初始化的过程和代码我就不详细解释。这里涉及到8259A芯片的特性等相关微机接口的知识。所以就不详述，只是给出代码。一下代码就是对两片8259A初始化的编程。
+
+{% highlight c linenos%}
+/*初始化8259A，主要目的让IR0-IR15映射到32-47*/
+PRIVATE void irq_remap()
+{
+    outportb(0x20, 0x11);
+    outportb(0xA0, 0x11);
+    outportb(0x21, 0x20);
+    outportb(0xA1, 0x28);
+    outportb(0x21, 0x04);
+    outportb(0xA1, 0x02);
+    outportb(0x21, 0x01);
+    outportb(0xA1, 0x01);
+    outportb(0x21, 0x0);
+    outportb(0xA1, 0x0);
+}
+{% endhighlight %}
+
+####外部中断子程序安装
+接下来我们要初始化32-47号中断处理子程序。和上次错误异常处理一样，我们要在`start.asm`初始化32-47号中断。以下代码可在上节代码上做补充内容。
+
+{% highlight as linenos%}
+global isr32
+...                ; 自行补全
+global isr47
+
+; 32: IRQ0
+isr32:
+    cli
+    push byte 0    ; 外部中断没有中断错误码，我们认为push一个0
+    push byte 32
+    jmp isr_common_stub
+
+...                ; 自行补全
+
+; 47: IRQ15
+isr47:
+    cli
+    push byte 0
+    push byte 47
+    jmp isr_common_stub
+
+{% endhighlight %}
+
+这里共用了上节课的`isr_common_stub`函数，并且在这个函数里共用了`fault_handler`函数。所以在`fault_handler`函数里要用一个判断语句来判断是内部异常中断还是外部中断。  
+
+我们还需要建议一个C文件来处理中断程序，还有8259A初始化工作的C代码。所以整个`irq.c`文件是这样。  
+
+
+{% highlight c linenos%}
+#include <system.h>
+
+
+extern void isr32();
+...                    /* 自行补全 */
+extern void isr47();
+
+/* 这以下是一个函数指针的数组，可以用来存放处理中断的程序的函数*/
+PRIVATE void *irq_routines[16] =
+{
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0
+};
+
+/* 安装对应IR中断的处理程序的函数*/
+PUBLIC void irq_install_handler(int irq, void (*handler)(struct regs *r))
+{
+    irq_routines[irq] = handler;
+}
+
+/* 卸载对应IR中断的处理程序的函数 */
+PUBLIC void irq_uninstall_handler(int irq)
+{
+    irq_routines[irq] = 0;
+}
+
+/* 上方已解释 */
+PRIVATE void irq_remap()
+{
+    outportb(0x20, 0x11);
+    outportb(0xA0, 0x11);
+    outportb(0x21, 0x20);
+    outportb(0xA1, 0x28);
+    outportb(0x21, 0x04);
+    outportb(0xA1, 0x02);
+    outportb(0x21, 0x01);
+    outportb(0xA1, 0x01);
+    outportb(0x21, 0x0);
+    outportb(0xA1, 0x0);
+}
+
+/* 先调用irq_remap把中断号修改好后。再设置IDT中32-47号中断对应的中断子程序入口地址 */
+PUBLIC void irq_install()
+{
+    irq_remap();
+
+    idt_set_gate(32, (u32)isr32, 0x08, 0x8E);
+    ...          /* 自行补充 */
+    idt_set_gate(47, (u32)isr47, 0x08, 0x8E);
+}
+
+/* 响应外部中断的处理程序 
+ * 处理完成后要对8259A发送中断结束指令。以便第二次请求这个级别的请求
+ */
+void irq_handler(struct regs *r)
+{
+    /* 先定义一个空的函数指针 */
+    void (*handler)(struct regs *r);
+
+    /* 根据中断号调用相应的处理函数，如果有的话*/
+    handler = irq_routines[r->int_no - 32];
+    if (handler)
+    {
+        handler(r);
+    }
+
+    /* 如果是从片产生的中断，那么完成处理后要对从片发送中断结束 */
+    if (r->int_no >= 40)
+    {
+        outportb(0xA0, 0x20);
+    }
+
+    /*不过是哪个片产生的中断，完成后都需要对主片发送结束*/
+    outportb(0x20, 0x20);
+}
+{% endhighlight %}
+
+
+##具体操作
+具体代码参看[github](https://github.com/westion717/KernelSharing/tree/master/day08/src)
+
+添加`irq.c`文件，并在`start.asm`中添加相应的代码。因为我们想把前32和32-47号的中断处理的C程序统一入口。所以我们改一下`fault_handler`的名字，改为`isr_handler`。然后我们在isr.c中添加这个函数，并且在这个函数里做个判断，如果是0-31的就调用原先的`fault_handler`,32-47的调用`irq_handler`。
+`isr.c`中内容改为如下  
+
+{% highlight c linenos%}
+
+/* 目前我们前面32个异常的处理全部用这个函数，而且只输出对应的字符串。然后死循环在那 */
+PRIVATE void fault_handler(struct regs *r)
+{
+        /* 打出错误信息，然后停止在那*/
+        puts(exception_messages[r->int_no]);
+        puts(" Exception. System Halted!\n");
+        for (;;);
+}
+
+//引入irq.c中的中断处理
+extern irq_handler(struct regs *r);
+void isr_handler(struct regs *r)
+{
+
+        /* 判断这个异常是不是0-31的,不是则是外部中断，调用外部中断处理程序*/
+        if (r->int_no < 32)
+        {
+                fault_handler(r);
+        }
+        else
+        {
+                irq_handler(r);
+        }
+
+}
+
+{% endhighlight %}
+
+还有main函数中添加一下irq_install，在irs_install之后。
+
+{% highlight c linenos%}
+#include <scrn.h>
+#include <gdt.h>
+#include <idt.h>
+#include <isr.h>
+#include <irq.h>
+
+
+
+int main()
+{
+        gdt_install();
+        idt_install();
+        isr_install();
+        irq_install();
+
+        init_video();
+
+      
+
+        __asm__ __volatile__ ("sti");
+        for (;;);
+        return 0;
+}
+
+{% endhighlight %}
+
+其他的老样子，makefile中添加相应新增文件
+
+OK。这样我们的irq就配置完成了。目前还看不出什么效果。所以也就不上图了。之后会对外部中断做设置，到时候可以看出效果。  
+到这里我们已经学会了怎么安装自己的GDT,IDT。怎么安装内部异常处理子程序，外部中断处理程序，统称ISR。恭喜你，到这里你已经跨过了操作系统内核开发的中的一道坎。接下来我们要做的事是对外部中断添加一两个真正的处理程序，现在只是找到了入口。
+
+##注意提醒
+---
