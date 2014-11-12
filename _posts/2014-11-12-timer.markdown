@@ -1,0 +1,189 @@
+---
+layout: post
+title:  时钟中断
+categories: day09
+---
+##内容概述
+---
+- timer
+- 时钟中断处理程序
+
+##知识点分析
+---
+
+
+上一部分，我们已经安装了外部中断的中断向量，即CPU已经可以处理由8259A产生的外部中断，只是处理过程为空。什么也没做。接下来我们要安装时钟中断的处理程序，也就是IR0的中断处理程序。
+####timer
+先来说一下，计算机中用来计算时间间隔的装置，PIT。（Programmable Interval Timer）可编程间隔定时器。它的作用就是数数。从一个数往下减，减到零就发出脉冲。因为每往下减一个数字经过的时间是固定的(频率由晶震决定)，所以可以达到计时的作用。并且这个装置是可编程的，也就是计数的初值和计数方式是可以编程改变的。  
+这个PIT中有三个这样作用的定时器，0号，1号，2号。产生时钟中断的是0号，所以我们主要操作的也是0号。另外两个，1号是用在系统内部的一些硬件的刷新时间。2号是用在蜂鸣器发声的频率控制上。我们就不多说了。  
+我们要对0号timer初始化。PC机中晶震的频率为`1193180hz`，也就是每秒钟可以数1193180次。而我们的timer的计数初值最大为65535，也就是每数65536次（计数初值＋1），就会重新开始。所以每秒钟大约有18.2次中断。每次中断间隔是0.055秒。这是计数器初值为最大值的情况。如果计数初值小一些，那么每秒中断次数会更多，每次中断间隔就更小。  
+PC中0号定时器的计数初值写入的端口地址为`0x40`,计数方式控制和计数器选择通过端口`0x43`。以下C代码就是初始化的作用。`hz`指代**每秒钟中断的次数**。
+
+
+{% highlight c linenos%}
+PRIVATE void timer_phase(int hz)
+{
+        int divisor;
+        if(hz<19) /*小于19则计数器初值用最大值0xFFFF写入*/
+        {
+                divisor=0xFFFF;
+        }
+        else{
+                divisor = 1193180 / hz;   /*计算初值*/
+        }
+        outportb(0x43, 0x36);             /* 写命令方式字 */
+        outportb(0x40, divisor & 0xFF);   /* 设置除数的低8位 */
+        outportb(0x40, divisor >> 8);     /* 设置除数的高8位 */
+}
+
+{% endhighlight %}
+
+这么一来，我们便有了初始化定时器的函数。现在计数器的初值可有`hz`来改变。并且定时器是工作在周期的方式下。所以会周而复始的工作，不断的引发中断。
+
+####时钟中断处理程序
+接下来我们要建立一个`timer.c`来设置中断处理程序。
+
+{% highlight c linenos%}
+/*timer.c*/
+
+include <system.h>
+#include <scrn.h>
+#include <timer.h>
+#include <irq.h>
+
+
+/* 纪录时钟节拍 */
+PRIVATE int timer_ticks = 0;
+
+PRIVATE void timer_handler(struct regs *r);
+PRIVATE void timer_phase(int hz);
+
+PRIVATE void timer_phase(int hz)
+{
+        int divisor;
+        if(hz<19)
+        {
+                divisor=0xFFFF;
+        }
+        else{
+                divisor = 1193180 / hz;   /*计算初值*/
+        }
+        outportb(0x43, 0x36);             /* 写命令方式字 */
+        outportb(0x40, divisor & 0xFF);   /* 设置除数的低8位 */
+        outportb(0x40, divisor >> 8);     /* 设置除数的高8位 */
+}
+
+/* 这是时钟中断，也就是IR0的处理程序*/
+PRIVATE void timer_handler(struct regs *r)
+{
+    /* 时钟节拍＋1*/
+    timer_ticks++;
+
+    /* 每18个节拍，大约1秒，在屏幕上打出一行字 */
+    if (timer_ticks % 18 == 0)
+    {
+        puts("One second has passed\n");
+    }
+}
+
+/* 把IR0中断处理函数安装到irq上*/
+PUBLIC void timer_install()
+{
+    timer_phase(18);
+    irq_install_handler(0, timer_handler);
+}
+
+{% endhighlight %}
+
+我们把每一次时钟中断叫做一个节拍。我们用1个变量纪录中断的次数。每经过18次中断，就是过了大约1秒钟，就在屏幕上输出一行字。  
+**注意，因为我们的timer_phase函数参数是18，所以是每18个节拍是1s。如果函数的参数的大于18，比如是100，那计数变量就是100，100个节拍为1s**  
+最后在timer_install中调用了定时器初始化的函数，然后也调用了`irq.c`里的安装外部中断处理程序的函数，把我们的时钟中断处理程序（timer_handler）安装上去。要记得在main函数中调用timer_install。
+
+##具体操作
+具体代码参看[github](https://github.com/westion717/KernelSharing/tree/master/day09/src)
+
+添加`timer.c`文件，并记得创建`timer.h`,把`.c`文件里的PUBLIC函数的申明放在`.h`中。最main函数的开中断语句之前调用`timer_install`。别忘了在makefile添加相应语句。
+
+{% highlight c linenos%}
+
+/* 目前我们前面32个异常的处理全部用这个函数，而且只输出对应的字符串。然后死循环在那 */
+PRIVATE void fault_handler(struct regs *r)
+{
+        /* 打出错误信息，然后停止在那*/
+        puts(exception_messages[r->int_no]);
+        puts(" Exception. System Halted!\n");
+        for (;;);
+}
+
+//引入irq.c中的中断处理
+extern irq_handler(struct regs *r);
+void isr_handler(struct regs *r)
+{
+
+        /* 判断这个异常是不是0-31的,不是则是外部中断，调用外部中断处理程序*/
+        if (r->int_no < 32)
+        {
+                fault_handler(r);
+        }
+        else
+        {
+                irq_handler(r);
+        }
+
+}
+
+{% endhighlight %}
+
+还有main函数中添加一下irq_install，在irs_install之后。
+
+{% highlight c linenos%}
+#include <scrn.h>
+#include <gdt.h>
+#include <idt.h>
+#include <isr.h>
+#include <irq.h>
+
+
+
+int main()
+{
+        gdt_install();
+        idt_install();
+        isr_install();
+        irq_install();
+
+        init_video();
+
+      
+
+        __asm__ __volatile__ ("sti");
+        for (;;);
+        return 0;
+}
+
+{% endhighlight %}
+
+其他的老样子，makefile中添加相应新增文件。
+
+最后运行的效果，如图
+
+![timer](http://mykernel.qiniudn.com/day09_timer.png)
+
+
+OK,我们已经安装完了我们的时钟中断的处理程序。接下来我们要安装我们的键盘中断。
+
+##注意提醒
+---
+- 如果之前为了产生除数为0的中断效果，在main函数中除了0，记得把相关语句删除。因为除数为0的异常中断优先级高于外部中断。并且我们除数为0的错误的处理是死循环在那，所以低优先级的时钟中断无法相应。
+- 正式内核中，中断频率可能并不是1秒钟18次。
+- 补充。以下是一个简易的延时函数。可自行参考。
+	{% highlight c linenos%}
+	/* 简易的延时函数*/
+	void timer_wait(int ticks)
+	{
+ 	   unsigned long eticks;
+
+  	  eticks = timer_ticks + ticks;
+  	  while(timer_ticks < eticks);
+	}
+	{% endhighlight %}
