@@ -1,0 +1,129 @@
+---
+layout: post
+title:  键盘中断
+categories: day10
+---
+##内容概述
+---
+- 扫描码
+- 键盘中断处理程序
+
+##知识点分析
+---
+
+
+上一部分我们安装了时钟中断处理程序，接下来我们要安装键盘中断处理程序。部分内容也可以叫做键盘的驱动。先介绍一下键盘的简单工作原理，是怎么识别按键的。
+
+
+####扫描码
+当你按下键盘的时候，键盘会生成一个扫描码。每个键的扫描码都不相同。所以可以通过读取扫描码来识别按下了哪个键。  
+PC中控制键盘的芯片有两个端口，控制端口和数据端口。当键盘确定了键之后就会将扫描码存在数据端口的寄存器里，并去出发IRQ1中断。然后我们去数据端口寄存器里去取扫描码。  
+扫描码是一个8位的数。**如果最高位为1的话，代表正在释放这个键，不为1代表按下**。我们要把它转换成对应的ASCII码，那就需要一个对应的表。每次输入之后我们通过查表就知道按的是什么字母。所以我们要建立一个数组。
+
+{% highlight c linenos%}
+/*这是一个美式键盘的映射表*/
+/*还有部分非显示字符部分用0代替*/
+PRIVATE unsigned char kbdus[128] =
+{
+    0,  27, '1', '2', '3', '4', '5', '6', '7', '8',	/* 9 */
+  '9', '0', '-', '=', '\b',	/* Backspace */
+  '\t',			/* Tab */
+  'q', 'w', 'e', 'r',	/* 19 */
+  't', 'y', 'u', 'i', 'o', 'p', '[', ']', '\n',	/* Enter key */
+    0,			/* 29   - Control */
+  'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', ';',	/* 39 */
+ '\'', '`',   0,		/* Left shift */
+ '\\', 'z', 'x', 'c', 'v', 'b', 'n',			/* 49 */
+  'm', ',', '.', '/',   0,				/* Right shift */
+  '*',
+    0,	/* Alt */
+  ' ',	/* Space bar */
+    0,	/* Caps lock */
+    0,	/* 59 - F1 key ... > */
+    0,   0,   0,   0,   0,   0,   0,   0,
+    0,	/* < ... F10 */
+    0,	/* 69 - Num lock*/
+    0,	/* Scroll Lock */
+    0,	/* Home key */
+    0,	/* Up Arrow */
+    0,	/* Page Up */
+  '-',
+    0,	/* Left Arrow */
+    0,
+    0,	/* Right Arrow */
+  '+',
+    0,	/* 79 - End key*/
+    0,	/* Down Arrow */
+    0,	/* Page Down */
+    0,	/* Insert Key */
+    0,	/* Delete Key */
+    0,   0,   0,
+    0,	/* F11 Key */
+    0,	/* F12 Key */
+    0,	/* All other keys are undefined */
+};		
+{% endhighlight %}
+
+另附一ASCII码表。来自百度百科
+![ASCII](http://d.hiphotos.baidu.com/baike/c0%3Dbaike92%2C5%2C5%2C92%2C30%3Bt%3Dgif/sign=19da136789d4b31ce4319ce9e6bf4c1a/fcfaaf51f3deb48fdf63a9faf21f3a292df5788f.jpg)
+
+
+####键盘中断处理程序
+有了对应的表，接下来我们安装中断处理程序，读扫描码，然后查表，然后在屏幕输出对应字符。
+
+{% highlight c linenos%}
+/* 键盘中断处理程序 */
+PRIVATE void keyboard_handler(struct regs *r)
+{
+    unsigned char scancode;
+
+    /*从键盘的数据寄存器端口取得扫描码 */
+    scancode = inportb(0x60);
+
+    /* 检测是否是释放按键 */
+    if (scancode & 0x80)
+    {
+        /* 这里可以来处理释放的是什么按键，用来标记
+        比如shift，alt，or control是否被按下
+         */
+    }
+    else
+    {
+        /* 这里处理按下的字符，我们做简单处理，只是输出按下的字符*/
+        /*你也可以设置标志符号来判断shift键是否按下，那么需要一个更大的映射表*/
+        putch(kbdus[scancode]);
+    }
+}
+{% endhighlight %}
+
+最后别忘了安装中断处理程序。
+
+{% highlight c linenos%}
+/* 安装IRQ1中断处理程序 */
+PUBLIC void keyboard_install()
+{
+    irq_install_handler(1, keyboard_handler);
+}
+{% endhighlight %}
+
+在main函数中调用keyboard_install
+
+##具体操作
+具体代码参看[github](https://github.com/westion717/KernelSharing/tree/master/day10/src)
+
+为了看到键盘输入效果，我们在main函数关掉timer的install  
+添加`kb.c`和对应的头文件`kb.h`。在makefile中添加对应目标文件。然后按老步骤，编译生成镜像。
+
+运行之后的结果就是可以在屏幕上输入字符。
+
+![keyboard](http://mykernel.qiniudn.com/day10_kb.png)
+
+由于shitf和contrl，大写锁定键的判断和处理没有做，所以打不了大些和shitf按住之后的字符。
+
+##注意提醒
+---
+- 我们知道键盘的数据端口是0x60，可以读取扫描码。其实除了读之外，数据端口还可以写入。写入的作用就是使得键盘上三个指示灯发亮。但是在写入之前，我们要检测控制芯片是否空闲，如果还在处理输入则还没空闲。通过读取控制端口0x64来检测是否繁忙，此时控制端口寄存器就是状态寄存器。`if ((inportb(0x64) & 2) == 0) break;`。通过死循环调用该语句就能检测出是否处在繁忙状态。不在繁忙就跳出循环。
+- 如果不处在繁忙状态，就可以向数据端口写入数值，控制键盘灯。先向数据寄存器写入0xED，再写入第三位来控制三个灯。0位是Scroll lock灯，1位是Num lock灯，2位是Caps lock灯。1亮，0灭。
+- 关于键盘控制的拓展留给读者自行完成。或者后续补充。
+- ***到今天的课程为止，参考[http://www.osdever.net/bkerndev/Docs/title.htm](http://www.osdever.net/bkerndev/Docs/title.htm)的内容已告一段落，day10及以前的内容全部来自此教程，版权归它所有***
+- ***今天之后的内容将由我本人参考其他教程之后再来编写，但不会全部拷贝，主要以学习后自行书写完成***
